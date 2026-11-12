@@ -1,0 +1,486 @@
+/* Rota Certa: identidade visual tirada da sinalização viária brasileira.
+   Verde de placa de orientação, asfalto, faixa amarela e placa de advertência em losango. */
+
+:root {
+  --placa: #0e6b4a;
+  --placa-escura: #0a5239;
+  --asfalto: #26323a;
+  --faixa: #f5b700;
+  --fundo: #e8ece9;
+  --papel: #ffffff;
+  --texto: #1c2429;
+  --suave: #5b676d;
+  --linha: #d4dbd7;
+  --erro: #b42318;
+  --waze: #33ccff;
+
+  --raio: 10px;
+  --linha-x: 20px; /* centro da "estrada" no painel */
+
+  font-family: 'Overpass', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--texto);
+  background: var(--fundo);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+body { margin: 0; }
+
+button,
+input { font: inherit; color: inherit; }
+
+:focus-visible {
+  outline: 3px solid var(--faixa);
+  outline-offset: 2px;
+}
+
+/* ---------- layout ---------- */
+
+.app {
+  display: grid;
+  grid-template-columns: minmax(380px, 460px) 1fr;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.panel {
+  background: var(--papel);
+  border-right: 1px solid var(--linha);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.map-area { position: relative; min-height: 0; }
+.map { position: absolute; inset: 0; background: #dfe5e1; }
+.map-unavailable { display: grid; place-items: center; color: var(--suave); padding: 24px; text-align: center; }
+
+/* ---------- marca ---------- */
+
+.brand { padding: 20px 28px 0; }
+
+.brand-sign {
+  display: inline-block;
+  background: var(--placa);
+  color: #fff;
+  border-radius: 8px;
+  padding: 3px;
+}
+.brand-name {
+  display: block;
+  border: 2px solid #fff;
+  border-radius: 6px;
+  padding: 5px 12px 3px;
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+}
+
+/* ---------- planejamento ---------- */
+
+.planner,
+.result {
+  padding: 24px 28px 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.planner-title {
+  margin: 0;
+  font-size: 2rem;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: var(--asfalto);
+}
+.planner-lead {
+  margin: 10px 0 28px;
+  color: var(--suave);
+  line-height: 1.5;
+  max-width: 36ch;
+}
+
+/* A "estrada": linha de asfalto com faixa amarela tracejada ligando os pontos */
+.road {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.road-node {
+  position: relative;
+  padding: 0 0 18px 52px;
+  min-height: 46px;
+}
+.road-node::before,
+.road-node::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.road-node::before {
+  left: calc(var(--linha-x) - 6px);
+  width: 12px;
+  background: var(--asfalto);
+}
+.road-node::after {
+  left: calc(var(--linha-x) - 1px);
+  width: 2px;
+  background: repeating-linear-gradient(to bottom, var(--faixa) 0 8px, transparent 8px 16px);
+}
+.road-node:first-child::before,
+.road-node:first-child::after { top: 23px; }
+.road-node:last-child::before,
+.road-node:last-child::after { bottom: auto; height: 23px; }
+/* o trecho até "adicionar" é uma estrada ainda por fazer */
+.node-add::before { opacity: 0.18; }
+.node-add::after { opacity: 0.5; }
+
+.marker {
+  position: absolute;
+  z-index: 1;
+  left: var(--linha-x);
+  top: 23px;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--papel);
+  border: 3px solid var(--asfalto);
+  transition: background-color 0.2s, border-color 0.2s;
+}
+.marker-located { background: var(--placa); border-color: #fff; box-shadow: 0 0 0 2px var(--asfalto); }
+.marker-start {
+  width: 26px;
+  height: 26px;
+  background: var(--placa);
+  border: 4px solid #fff;
+  box-shadow: 0 0 0 2px var(--placa), 0 0 0 7px rgba(14, 107, 74, 0.18);
+}
+.marker-add {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px dashed var(--suave);
+  color: var(--suave);
+  font-weight: 800;
+  font-size: 1.05rem;
+  line-height: 1;
+  padding-top: 2px;
+}
+/* placa de advertência em losango com o número da parada */
+.marker-diamond {
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
+  background: var(--faixa);
+  border: 2px solid var(--asfalto);
+  transform: translate(-50%, -50%) rotate(45deg);
+  display: grid;
+  place-items: center;
+}
+.marker-diamond b {
+  transform: rotate(-45deg);
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding-top: 2px;
+}
+
+.node-body { min-width: 0; }
+.node-row { display: flex; gap: 6px; align-items: flex-start; }
+.node-title { display: block; font-weight: 700; line-height: 1.3; padding-top: 12px; }
+.node-subtitle { display: block; color: var(--suave); font-size: 0.875rem; line-height: 1.4; margin-top: 2px; }
+
+.gps-problem .node-title { color: var(--erro); font-weight: 600; }
+.gps-actions { display: flex; gap: 16px; flex-wrap: wrap; }
+
+/* ---------- campo de endereço ---------- */
+
+.address-input { position: relative; flex: 1; min-width: 0; }
+.address-input input {
+  width: 100%;
+  height: 46px;
+  padding: 0 38px 0 14px;
+  border: 1.5px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--papel);
+  font-size: 1rem;
+  transition: border-color 0.15s;
+}
+.address-input input::placeholder { color: #8b969b; }
+.address-input input:hover { border-color: #b7c1bc; }
+.address-input input:focus { border-color: var(--asfalto); outline: none; box-shadow: 0 0 0 3px rgba(245, 183, 0, 0.45); }
+.address-input input.is-located { border-color: rgba(14, 107, 74, 0.45); }
+.located-hint {
+  display: block;
+  margin: 4px 0 0 2px;
+  color: var(--placa);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spinner {
+  position: absolute;
+  right: 14px;
+  top: 15px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--linha);
+  border-top-color: var(--asfalto);
+  border-radius: 50%;
+  animation: girar 0.7s linear infinite;
+}
+@keyframes girar { to { transform: rotate(360deg); } }
+
+.suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--papel);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  box-shadow: 0 12px 32px -8px rgba(38, 50, 58, 0.28);
+}
+.suggestions li {
+  padding: 9px 10px 7px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.suggestions li.is-active { background: #eef2ef; }
+.suggestions strong { display: block; font-weight: 600; }
+.suggestions span { display: block; color: var(--suave); font-size: 0.85rem; margin-top: 1px; }
+
+/* ---------- botões ---------- */
+
+.icon-button {
+  flex: none;
+  width: 40px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  border-radius: var(--raio);
+  color: #8b969b;
+  cursor: pointer;
+}
+.icon-button:hover { background: #f1f4f2; color: var(--erro); }
+.icon-button svg,
+.back-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.add-button {
+  height: 46px;
+  border: none;
+  background: none;
+  padding: 0;
+  font-weight: 700;
+  color: var(--placa);
+  cursor: pointer;
+}
+.add-button:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.text-button {
+  border: none;
+  background: none;
+  padding: 6px 0 0;
+  color: var(--placa);
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.text-button:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 12px 18px 10px;
+  border: none;
+  border-radius: var(--raio);
+  font-weight: 700;
+  font-size: 1rem;
+  text-decoration: none;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.button-primary { background: var(--placa); color: #fff; }
+.button-primary:hover { background: var(--placa-escura); }
+.button-primary:disabled { cursor: progress; background: var(--placa-escura); }
+.button-large { width: 100%; min-height: 56px; font-size: 1.05rem; }
+.button-waze { background: var(--waze); color: #04293a; }
+.button-waze:hover { background: #1fbdf0; }
+.button-quiet { background: #eef2ef; color: var(--asfalto); margin: 8px 0 32px; }
+.button-quiet:hover { background: #e2e8e4; }
+
+.action-bar {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  padding: 20px 0 24px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), var(--papel) 30%);
+}
+
+.error {
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--raio);
+  background: #fdecea;
+  color: var(--erro);
+  line-height: 1.45;
+}
+
+/* ---------- resultado ---------- */
+
+.back-button {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  padding: 4px 8px 4px 0;
+  color: var(--placa);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* o total aparece como uma placa de orientação */
+.summary-sign {
+  margin: 14px 0 16px;
+  background: var(--placa);
+  color: #fff;
+  border-radius: 14px;
+  padding: 20px 22px 18px;
+  box-shadow: inset 0 0 0 4px var(--placa), inset 0 0 0 6px #fff;
+}
+.summary-distance {
+  margin: 0;
+  font-size: 2.75rem;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.summary-meta { margin: 8px 0 0; font-size: 1.05rem; opacity: 0.9; }
+.summary-saving { margin: 12px 0 0; color: #ffe27a; font-weight: 600; line-height: 1.4; }
+
+.nav-actions { display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }
+.fine-print { margin: 4px 0 0; color: var(--suave); font-size: 0.85rem; line-height: 1.45; }
+
+/* No resultado, cada trecho mostra a distância antes da parada.
+   Espaço com padding (não margin) para a estrada não ficar com falhas. */
+.road-result .road-node { padding-bottom: 4px; }
+.road-result .road-node:not(:first-child) { padding-top: 30px; }
+.road-result .road-node:not(:first-child) .marker { top: 53px; }
+.road-result .road-node:last-child:not(:first-child)::before,
+.road-result .road-node:last-child:not(:first-child)::after { height: 53px; }
+.leg {
+  position: absolute;
+  left: 52px;
+  top: 8px;
+  font-size: 0.8rem;
+  color: var(--suave);
+}
+.stop-links { display: flex; gap: 16px; margin-top: 6px; }
+.stop-links a {
+  color: var(--placa);
+  font-weight: 700;
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+.stop-links a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.notice {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: var(--raio);
+  background: #fff6db;
+  color: #5c4300;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.notice p { margin: 0; }
+.notice ul { margin: 6px 0; padding-left: 18px; }
+
+/* ---------- marcadores do mapa ---------- */
+
+.map-pin-start span {
+  display: block;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--placa);
+  border: 4px solid #fff;
+  box-shadow: 0 0 0 2px var(--placa), 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.map-pin-draft span {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 7px;
+  border-radius: 50%;
+  background: var(--asfalto);
+  border: 3px solid #fff;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.35);
+}
+.map-pin-draft b { display: none; }
+.map-pin-stop span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: 3px;
+  border-radius: 3px;
+  background: var(--faixa);
+  border: 2px solid var(--asfalto);
+  transform: rotate(45deg);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.map-pin-stop b {
+  transform: rotate(-45deg);
+  font: 800 12px/1 'Overpass', sans-serif;
+  color: var(--asfalto);
+  padding-top: 2px;
+}
+.leaflet-container { font-family: 'Overpass', sans-serif; }
+.leaflet-tooltip { font-weight: 600; }
+
+/* ---------- celular ---------- */
+
+@media (max-width: 820px) {
+  .app { display: flex; flex-direction: column; height: auto; min-height: 100dvh; }
+  .map-area { order: -1; height: 38vh; min-height: 240px; }
+  .panel { border-right: none; overflow: visible; flex: 1; border-radius: 18px 18px 0 0; margin-top: -18px; position: relative; z-index: 500; }
+  .brand { padding: 18px 20px 0; }
+  .planner,
+  .result { padding: 18px 20px 0; }
+  .planner-title { font-size: 1.65rem; }
+  .planner-lead { margin-bottom: 22px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after { animation: none !important; transition: none !important; }
+}
