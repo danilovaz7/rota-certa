@@ -8,6 +8,7 @@ const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const COUNTRY = 'BR'; // deixe '' para aceitar endereços de qualquer país
 const NOMINATIM_INTERVAL_MS = 1100;
 const CACHE_KEY = 'rota-certa:geocode:v2';
+const CACHE_MAX = 300; // endereços guardados no aparelho (os mais recentes)
 
 /** @typedef {{lat:number, lon:number, title:string, subtitle:string}} Place */
 
@@ -29,7 +30,7 @@ function photonPlace(feature) {
  * @param {{near?: {lat:number, lon:number}, signal?: AbortSignal}} options
  * @returns {Promise<Place[]>}
  */
-export async function suggestPlaces(query, { near, signal } = {}) {
+export async function suggestPlaces(query, { near, signal, limit = 5 } = {}) {
   const params = new URLSearchParams({ q: query, limit: '8', lang: 'default' });
   if (near) {
     params.set('lat', near.lat.toFixed(5));
@@ -48,7 +49,7 @@ export async function suggestPlaces(query, { near, signal } = {}) {
       seen.add(key);
       return true;
     })
-    .slice(0, 5);
+    .slice(0, limit);
 }
 
 // ---------- busca de texto livre (Nominatim) ----------
@@ -64,6 +65,14 @@ function loadCache() {
   }
 }
 
+function remember(key, place) {
+  delete cache[key];
+  cache[key] = place; // reinsere no fim: as chaves ficam em ordem de uso
+  const keys = Object.keys(cache);
+  for (let i = 0; i < keys.length - CACHE_MAX; i++) delete cache[keys[i]];
+  saveCache();
+}
+
 function saveCache() {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
@@ -76,11 +85,28 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Converte um endereço digitado em coordenadas.
+ * Tenta primeiro o Photon (rápido, sem limite de 1 pedido por segundo) e, se ele não achar,
+ * o Nominatim. Assim uma lista colada com 30 endereços não leva 30 segundos.
  * @returns {Promise<Place | null>}
  */
 export async function geocode(query, { near } = {}) {
   const key = query.trim().toLowerCase();
+  if (!key) return null;
   if (cache[key]) return cache[key];
+
+  try {
+    const [first] = await suggestPlaces(query, { near, limit: 1 });
+    if (first) {
+      remember(key, first);
+      return first;
+    }
+  } catch {
+    // Photon fora do ar: segue para o Nominatim
+  }
+  return geocodeNominatim(query, key, near);
+}
+
+async function geocodeNominatim(query, key, near) {
 
   const wait = lastNominatimAt + NOMINATIM_INTERVAL_MS - Date.now();
   if (wait > 0) await sleep(wait);
@@ -121,7 +147,6 @@ export async function geocode(query, { near } = {}) {
     title: road || hit.name || query,
     subtitle: [a.suburb, a.city || a.town || a.village, a.state].filter(Boolean).join(', '),
   };
-  cache[key] = place;
-  saveCache();
+  remember(key, place);
   return place;
 }

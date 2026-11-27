@@ -1,6 +1,6 @@
 import { geocode } from './geocode.js';
 import { getMatrices, estimatedMatrices, getRoute } from './routing.js';
-import { solveOpenTsp, pathCost } from './tsp.js';
+import { solveOpenTsp, solveRoundTrip, pathCost, roundTripCost } from './tsp.js';
 
 /**
  * Calcula a rota mais curta (em distância pelas ruas) passando por todas as paradas.
@@ -8,8 +8,9 @@ import { solveOpenTsp, pathCost } from './tsp.js';
  * @param {{lat:number, lon:number, title:string}} start ponto de partida já localizado
  * @param {{id:string, text:string, place:object|null}[]} stops paradas como estão na tela
  * @param {(message:string) => void} onProgress
+ * @param {{roundTrip?: boolean}} options roundTrip = voltar ao ponto de partida no fim
  */
-export async function planRoute(start, stops, onProgress = () => {}) {
+export async function planRoute(start, stops, onProgress = () => {}, { roundTrip = false } = {}) {
   // 1. Garante coordenadas para todas as paradas
   const located = [];
   const notFound = [];
@@ -44,23 +45,26 @@ export async function planRoute(start, stops, onProgress = () => {}) {
 
   // 3. Melhor ordem: menor distância total
   onProgress('Escolhendo a melhor ordem');
-  const order = solveOpenTsp(matrices.distance);
+  const order = roundTrip ? solveRoundTrip(matrices.distance) : solveOpenTsp(matrices.distance);
   const ordered = order.slice(1).map((i) => points[i]);
+  const cost = roundTrip ? roundTripCost : pathCost;
 
   // 4. Traçado pelas ruas para o mapa
   onProgress('Traçando a rota');
   let route = null;
   if (!estimated) {
     try {
-      route = await getRoute([start, ...ordered]);
+      route = await getRoute([start, ...ordered, ...(roundTrip ? [start] : [])]);
     } catch {
       route = null;
     }
   }
 
+  // Um trecho por parada; na ida e volta há um trecho a mais (última parada → partida)
+  const visits = roundTrip ? [...order.slice(1), 0] : order.slice(1);
   const legs = route
     ? route.legs
-    : order.slice(1).map((to, k) => ({
+    : visits.map((to, k) => ({
         distance: matrices.distance[order[k]][to],
         duration: matrices.duration[order[k]][to],
       }));
@@ -69,11 +73,12 @@ export async function planRoute(start, stops, onProgress = () => {}) {
     start,
     stops: ordered,
     legs,
-    distance: route ? route.distance : pathCost(order, matrices.distance),
-    duration: route ? route.duration : pathCost(order, matrices.duration),
-    typedOrderDistance: pathCost(points.map((_, i) => i), matrices.distance),
+    roundTrip,
+    distance: route ? route.distance : cost(order, matrices.distance),
+    duration: route ? route.duration : cost(order, matrices.duration),
+    typedOrderDistance: cost(points.map((_, i) => i), matrices.distance),
     geometry: route ? route.geometry : null,
-    notFound,
+    notFound: notFound.map((s) => ({ id: s.id, text: s.text })),
     estimated,
   };
 }

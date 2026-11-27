@@ -7,7 +7,7 @@ const GOOGLE_MAX_WAYPOINTS = 9;
 const fmt = (p) => `${p.lat.toFixed(6)},${p.lon.toFixed(6)}`;
 
 /**
- * @param {{lat:number, lon:number}} start ponto de partida
+ * @param {{lat:number, lon:number} | null} start ponto de partida; null = o Google usa a localização atual
  * @param {{lat:number, lon:number}[]} stops paradas já na ordem otimizada
  * @returns {{url:string, from:number, to:number}[]} from/to = números das paradas (1 = primeira)
  */
@@ -19,12 +19,10 @@ export function googleMapsLinks(start, stops) {
     const chunk = stops.slice(i, i + GOOGLE_MAX_WAYPOINTS + 1);
     const destination = chunk[chunk.length - 1];
     const waypoints = chunk.slice(0, -1);
-    const params = new URLSearchParams({
-      api: '1',
-      origin: fmt(origin),
-      destination: fmt(destination),
-      travelmode: 'driving',
-    });
+    const params = new URLSearchParams({ api: '1' });
+    if (origin) params.set('origin', fmt(origin));
+    params.set('destination', fmt(destination));
+    params.set('travelmode', 'driving');
     if (waypoints.length) params.set('waypoints', waypoints.map(fmt).join('|'));
     links.push({ url: `https://www.google.com/maps/dir/?${params}`, from: i + 1, to: i + chunk.length });
     origin = destination;

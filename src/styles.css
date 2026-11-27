@@ -423,6 +423,108 @@ input { font: inherit; color: inherit; }
 .notice p { margin: 0; }
 .notice ul { margin: 6px 0; padding-left: 18px; }
 
+/* ---------- colar lista e opções ---------- */
+
+.add-row { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+.add-row .text-button { padding-top: 0; }
+
+.paste-box {
+  margin: 4px 0 16px;
+  padding: 14px;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: #f7f9f8;
+}
+.paste-label { display: block; font-size: 0.875rem; font-weight: 600; margin-bottom: 8px; line-height: 1.4; }
+.paste-box textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 120px;
+  padding: 10px 12px;
+  border: 2px solid var(--linha);
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+.paste-box textarea:focus { outline: none; border-color: var(--placa); }
+.paste-actions { display: flex; gap: 8px; margin-top: 10px; }
+.paste-actions .button { flex: 1; }
+.paste-actions .button-quiet { margin: 0; flex: 0 0 auto; }
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.option input, .done-check input { width: 20px; height: 20px; accent-color: var(--placa); cursor: pointer; }
+
+.hint { margin: 4px 0 0; color: var(--suave); font-size: 0.875rem; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- modo entrega ---------- */
+
+.result-top { display: flex; justify-content: space-between; align-items: center; }
+.result-top .text-button { padding: 4px 0; }
+
+.progress {
+  margin-top: 14px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+.progress span { display: block; height: 100%; background: var(--faixa); transition: width 0.3s; }
+
+.next-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+  padding: 14px 16px 16px;
+  border: 2px solid var(--faixa);
+  border-radius: 14px;
+  background: #fffaf0;
+}
+.next-card-done { border-color: var(--placa); background: #eef7f2; gap: 8px; }
+.next-label { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #7a5b00; }
+.next-title { display: flex; align-items: baseline; gap: 8px; font-size: 1.15rem; line-height: 1.3; }
+.next-number {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 2px 6px 0;
+  border-radius: 6px;
+  background: var(--asfalto);
+  color: #fff;
+  font-size: 0.85rem;
+}
+.next-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.button-outline { background: #fff; color: var(--asfalto); box-shadow: inset 0 0 0 2px var(--asfalto); }
+.button-outline:hover { background: #f1f3f2; }
+
+.stop-info { flex: 1; min-width: 0; }
+.done-check { display: grid; place-items: center; width: 44px; height: 44px; margin-top: 4px; cursor: pointer; }
+.road-node.is-done .node-title,
+.road-node.is-done .node-subtitle { color: var(--suave); text-decoration: line-through; }
+.road-node.is-done .marker-diamond { opacity: 0.45; }
+.road-node.is-next .node-title { color: var(--placa-escura); }
+
 /* ---------- marcadores do mapa ---------- */
 
 .map-pin-start span {
@@ -463,6 +565,8 @@ input { font: inherit; color: inherit; }
   color: var(--asfalto);
   padding-top: 2px;
 }
+.map-pin-stop.is-done span { background: #c9d1cd; border-color: #8a969c; box-shadow: none; }
+.map-pin-stop.is-done b { color: #5b676d; }
 .leaflet-container { font-family: 'Overpass', sans-serif; }
 .leaflet-tooltip { font-weight: 600; }
 

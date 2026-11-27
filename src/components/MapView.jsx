@@ -8,9 +8,9 @@ function startIcon(L) {
   return L.divIcon({ className: 'map-pin-start', html: '<span></span>', iconSize: [26, 26], iconAnchor: [13, 13] });
 }
 
-function stopIcon(L, label) {
+function stopIcon(L, label, done) {
   return L.divIcon({
-    className: label ? 'map-pin-stop' : 'map-pin-draft',
+    className: label ? `map-pin-stop${done ? ' is-done' : ''}` : 'map-pin-draft',
     html: `<span><b>${label ?? ''}</b></span>`,
     iconSize: [30, 30],
     iconAnchor: [15, 15],
@@ -20,10 +20,11 @@ function stopIcon(L, label) {
 /**
  * @param {{start: {lat:number, lon:number}|null, draftStops: {lat:number, lon:number, title:string}[], result: object|null}} props
  */
-export default function MapView({ start, draftStops, result }) {
+export default function MapView({ start, draftStops, result, done = [] }) {
   const elementRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
+  const lastFitRef = useRef('');
   const L = typeof window !== 'undefined' ? window.L : null;
 
   useEffect(() => {
@@ -44,6 +45,7 @@ export default function MapView({ start, draftStops, result }) {
       observer.disconnect();
       map.remove();
       mapRef.current = null;
+      lastFitRef.current = '';
     };
   }, [L]);
 
@@ -60,7 +62,7 @@ export default function MapView({ start, draftStops, result }) {
     if (result) {
       const line = result.geometry
         ? result.geometry.coordinates.map(([lon, lat]) => [lat, lon])
-        : [result.start, ...result.stops].map((p) => [p.lat, p.lon]);
+        : [result.start, ...result.stops, ...(result.roundTrip ? [result.start] : [])].map((p) => [p.lat, p.lon]);
       // Rua escura com a faixa amarela por cima, como no painel
       L.polyline(line, { color: '#26323a', weight: 9, opacity: 0.9, lineCap: 'round' }).addTo(layer);
       L.polyline(line, { color: '#f5b700', weight: 2.5, dashArray: '8 10', lineCap: 'butt' }).addTo(layer);
@@ -75,15 +77,20 @@ export default function MapView({ start, draftStops, result }) {
     }
 
     stops.forEach((stop, index) => {
-      L.marker([stop.lat, stop.lon], { icon: stopIcon(L, result ? index + 1 : null), title: stop.title })
+      const isDone = Boolean(result && done.includes(stop.id));
+      L.marker([stop.lat, stop.lon], { icon: stopIcon(L, result ? index + 1 : null, isDone), title: stop.title })
         .bindTooltip(stop.title, { direction: 'top', offset: [0, -14] })
         .addTo(layer);
       bounds.push([stop.lat, stop.lon]);
     });
 
+    // Marcar uma parada como feita não deve tirar o mapa do lugar onde a pessoa deixou
+    const fitKey = JSON.stringify(bounds);
+    if (fitKey === lastFitRef.current) return;
+    lastFitRef.current = fitKey;
     if (bounds.length === 1) map.setView(bounds[0], 15);
     else if (bounds.length > 1) map.fitBounds(L.latLngBounds(bounds), { padding: [48, 48], maxZoom: 16 });
-  }, [L, start, draftStops, result]);
+  }, [L, start, draftStops, result, done]);
 
   if (!L) {
     return <div className="map map-unavailable">O mapa não carregou. Verifique sua conexão.</div>;
