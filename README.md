@@ -4,6 +4,14 @@ App web que recebe endereços **em qualquer ordem** e calcula a sequência com *
 
 Feito com React + Vite. Mapas e dados gratuitos, sem chave de API.
 
+## O que ele faz
+
+- **Colar lista**: cole vários endereços de uma vez (do WhatsApp, de uma planilha), um por linha. Numeração, marcadores e repetidos são removidos.
+- **Ida e volta**: opção para voltar ao ponto de partida no fim; a ordem é otimizada contando a volta.
+- **Modo entrega**: depois de calcular, o app mostra a próxima parada com o botão do Waze; toque em "Cheguei" e ele passa para a seguinte. O link do Google Maps sempre traz só o que falta.
+- **Não perde a rota**: tudo fica salvo no aparelho. No celular, ao abrir o Waze o navegador costuma descarregar a aba; ao voltar, a rota e o progresso continuam lá (rotas com mais de 3 dias são descartadas).
+- **Instalável**: tem manifest de PWA, então dá para "Adicionar à tela inicial".
+
 ## Rodando
 
 ```bash
@@ -20,9 +28,11 @@ A localização só funciona em `localhost` ou em HTTPS.
 | Etapa | Serviço | Arquivo |
 |---|---|---|
 | Sugestões enquanto digita | [Photon](https://photon.komoot.io) | `src/lib/geocode.js` |
-| Endereço digitado sem escolher sugestão | [Nominatim](https://nominatim.org) | `src/lib/geocode.js` |
+| Endereço digitado sem escolher sugestão | Photon e, se não achar, [Nominatim](https://nominatim.org) | `src/lib/geocode.js` |
 | Distância real entre todos os pontos | [OSRM](https://project-osrm.org) | `src/lib/routing.js` |
-| Melhor ordem (caixeiro viajante, início fixo, sem volta) | próprio | `src/lib/tsp.js` |
+| Melhor ordem (caixeiro viajante, início fixo, com ou sem volta) | próprio | `src/lib/tsp.js` |
+| Lista colada → endereços | próprio | `src/lib/parseList.js` |
+| Estado salvo no aparelho | localStorage | `src/lib/storage.js` |
 | Mapa | [Leaflet](https://leafletjs.com) + OpenStreetMap | `src/components/MapView.jsx` |
 | Links do Google Maps e do Waze | URLs públicas | `src/lib/links.js` |
 
@@ -40,8 +50,10 @@ src/
   components/MapView.jsx       mapa Leaflet
   lib/optimize.js            junta tudo: localiza, mede, ordena, traça
   lib/geocode.js, routing.js, tsp.js, links.js, useGeolocation.js
+  lib/parseList.js, storage.js
+public/                      ícones e manifest (PWA)
   styles.css                 visual (cores de placa de trânsito, fonte Overpass)
-tests/                       node --test
+tests/                       node --test (rodam também no GitHub Actions)
 ```
 
 ## Limites dos serviços gratuitos

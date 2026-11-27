@@ -95,3 +95,51 @@ test('links do Google Maps dividem rotas longas', () => {
   assert.equal(new URL(links[1].url).searchParams.get('origin'), first.searchParams.get('destination'));
   assert.equal(wazeLink(stops[0]), 'https://waze.com/ul?ll=-23.500000,-46.600000&navigate=yes');
 });
+
+test('ida e volta: encontra o ótimo e não repete a partida', async () => {
+  const { solveRoundTrip, roundTripCost } = await import('../src/lib/tsp.js');
+  const rand = rng(2024);
+  for (const n of [5, 8, 14]) {
+    const pts = randomPoints(n, rand);
+    const m = asymmetric(estimatedMatrices(pts).distance, rand);
+    const route = solveRoundTrip(m);
+    assert.ok(isPermutationFromZero(route, n), `rota inválida com ${n} pontos`);
+    if (n <= 8) {
+      const permute = (arr) => (arr.length <= 1 ? [arr] : arr.flatMap((x, i) =>
+        permute([...arr.slice(0, i), ...arr.slice(i + 1)]).map((p) => [x, ...p])));
+      const brute = Math.min(...permute([...Array(n).keys()].slice(1)).map((p) => roundTripCost([0, ...p], m)));
+      assert.ok(Math.abs(roundTripCost(route, m) - brute) < 1e-6);
+    }
+  }
+});
+
+test('ida e volta em linha: vai até a ponta e volta', async () => {
+  const { solveRoundTrip, roundTripCost } = await import('../src/lib/tsp.js');
+  const pos = [0, 3, 1, 4, 2];
+  const m = pos.map((a) => pos.map((b) => Math.abs(a - b)));
+  assert.equal(roundTripCost(solveRoundTrip(m), m), 8);
+});
+
+test('lista colada: tira numeração, marcadores, repetidos e linhas vazias', async () => {
+  const { parseAddressList } = await import('../src/lib/parseList.js');
+  const text = [
+    '1. Rua Azevedo Sodré, 120, Santos',
+    '2) Av. Ana Costa, 300 - Santos',
+    '',
+    '- Rua Azevedo Sodre, 120, Santos   ',
+    '• Praça Mauá, 1, Santos',
+    'Rua Bahia\t45\tSão Vicente',
+    'ok',
+  ].join('\n');
+  assert.deepEqual(parseAddressList(text), [
+    'Rua Azevedo Sodré, 120, Santos',
+    'Av. Ana Costa, 300 - Santos',
+    'Praça Mauá, 1, Santos',
+    'Rua Bahia, 45, São Vicente',
+  ]);
+});
+
+test('Google Maps sem origem usa a localização atual', () => {
+  const links = googleMapsLinks(null, [{ lat: -23.9, lon: -46.3 }]);
+  assert.equal(new URL(links[0].url).searchParams.get('origin'), null);
+});

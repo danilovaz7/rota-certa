@@ -22,6 +22,28 @@ export function solveOpenTsp(matrix) {
   return iteratedLocalSearch(matrix);
 }
 
+/** Custo de ida e volta: o caminho mais o retorno da última parada ao ponto 0. */
+export function roundTripCost(route, matrix) {
+  if (route.length < 2) return 0;
+  return pathCost(route, matrix) + matrix[route[route.length - 1]][0];
+}
+
+/**
+ * Melhor ordem quando a pessoa precisa voltar ao ponto de partida no fim.
+ * Truque: cria um nó extra (cópia da partida) que só pode ser o último, porque sair dele
+ * custa uma penalidade enorme. Assim o mesmo resolvedor de caminho aberto serve.
+ * @returns {number[]} rota começando em 0, sem repetir o 0 no fim
+ */
+export function solveRoundTrip(matrix) {
+  const n = matrix.length;
+  if (n <= 2) return [...Array(n).keys()];
+  const BLOCKED = 1e12;
+  const extended = matrix.map((row) => [...row, row[0]]);
+  extended.push(Array.from({ length: n + 1 }, (_, j) => (j === n ? 0 : BLOCKED)));
+  const route = solveOpenTsp(extended);
+  return route.filter((i) => i !== n);
+}
+
 // Busca local iterada: parte da melhor rota conhecida, "embaralha" um pedaço dela
 // (perturbação double-bridge), aplica a busca local de novo e guarda se melhorou.
 // Isso escapa de ótimos locais em que a busca local sozinha fica presa.

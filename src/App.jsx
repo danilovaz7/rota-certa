@@ -5,11 +5,17 @@ import RouteResult from './components/RouteResult.jsx';
 import { useGeolocation } from './lib/useGeolocation.js';
 import { geocode } from './lib/geocode.js';
 import { planRoute } from './lib/optimize.js';
+import { parseAddressList } from './lib/parseList.js';
+import { loadState, saveState, clearState } from './lib/storage.js';
 
 const MAX_STOPS = 60;
 
+// Ids únicos mesmo entre sessões salvas (crypto.randomUUID não existe fora de HTTPS)
 let nextId = 1;
-const newStop = () => ({ id: `parada-${nextId++}`, text: '', place: null });
+const idPrefix = Date.now().toString(36);
+const newStop = (text = '') => ({ id: `parada-${idPrefix}-${nextId++}`, text, place: null });
+
+const saved = loadState();
 
 function RemoveIcon() {
   return (
@@ -21,18 +27,31 @@ function RemoveIcon() {
 
 export default function App() {
   const geo = useGeolocation();
-  const [stops, setStops] = useState(() => [newStop(), newStop()]);
-  const [manualStart, setManualStart] = useState(null); // null = sair da localização do GPS
-  const [phase, setPhase] = useState('edit'); // 'edit' | 'working' | 'result'
+  const [stops, setStops] = useState(() => (saved?.stops?.length ? saved.stops : [newStop(), newStop()]));
+  const [manualStart, setManualStart] = useState(() => saved?.manualStart ?? null); // null = GPS
+  const [roundTrip, setRoundTrip] = useState(() => Boolean(saved?.roundTrip));
+  const [result, setResult] = useState(() => saved?.result ?? null);
+  const [done, setDone] = useState(() => saved?.done ?? []); // ids das paradas já feitas
+  const [phase, setPhase] = useState(() => (saved?.result && saved?.phase === 'result' ? 'result' : 'edit'));
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
-  const [result, setResult] = useState(null);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [hint, setHint] = useState('');
   const inputRefs = useRef(new Map());
   const focusNext = useRef(null);
 
   const startPoint = manualStart ? manualStart.place : geo.position;
-  const draftStops = useMemo(() => stops.filter((s) => s.place).map((s) => s.place), [stops]);
+  // Só muda quando um endereço é confirmado; digitar não faz o mapa reenquadrar a cada tecla
+  const locatedKey = stops.map((s) => (s.place ? `${s.place.lat},${s.place.lon}` : '')).join('|');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const draftStops = useMemo(() => stops.filter((s) => s.place).map((s) => s.place), [locatedKey]);
   const filled = stops.filter((s) => s.text.trim());
+
+  // Salva tudo no aparelho a cada mudança (a fase 'working' é salva como 'edit')
+  useEffect(() => {
+    saveState({ stops, manualStart, roundTrip, result, done, phase: phase === 'result' ? 'result' : 'edit' });
+  }, [stops, manualStart, roundTrip, result, done, phase]);
 
   useEffect(() => {
     if (focusNext.current) {
@@ -44,6 +63,7 @@ export default function App() {
   function updateStop(id, patch) {
     setStops((list) => list.map((s) => (s.id === id ? { ...s, ...patch } : s)));
     setError('');
+    setHint('');
   }
 
   function addStop() {
@@ -54,6 +74,43 @@ export default function App() {
     const stop = newStop();
     focusNext.current = stop.id;
     setStops((list) => [...list, stop]);
+  }
+
+  function addPasted() {
+    const lines = parseAddressList(pasteText);
+    if (!lines.length) {
+      setError('Não achamos endereços no texto. Coloque um endereço por linha.');
+      return;
+    }
+    const already = new Set(stops.map((s) => s.text.trim().toLowerCase()).filter(Boolean));
+    const fresh = lines.filter((line) => !already.has(line.toLowerCase()));
+    const kept = stops.filter((s) => s.text.trim());
+    const room = MAX_STOPS - kept.length;
+    const added = fresh.slice(0, room).map((line) => newStop(line));
+    setStops([...kept, ...added].length ? [...kept, ...added] : [newStop()]);
+    setPasteText('');
+    setPasteOpen(false);
+    const skipped = lines.length - fresh.length;
+    const cut = fresh.length - added.length;
+    setError(
+      cut > 0
+        ? `Entraram ${added.length} endereços; ${cut} ficaram de fora pelo limite de ${MAX_STOPS} paradas.`
+        : '',
+    );
+    setHint(skipped > 0 ? `${skipped} repetido${skipped > 1 ? 's' : ''} ignorado${skipped > 1 ? 's' : ''}` : '');
+  }
+
+  function newRoute() {
+    clearState();
+    setStops([newStop(), newStop()]);
+    setResult(null);
+    setDone([]);
+    setError('');
+    setPhase('edit');
+  }
+
+  function toggleDone(id) {
+    setDone((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
   }
 
   function removeStop(id) {
@@ -92,8 +149,19 @@ export default function App() {
     try {
       setProgress('Localizando a partida');
       const start = await resolveStart();
-      const planned = await planRoute(start, filled, setProgress);
+      const planned = await planRoute(start, filled, setProgress, { roundTrip });
+      // Endereços sem coordenadas que foram encontrados agora ficam confirmados na lista
+      const found = new Map(planned.stops.map((p) => [p.id, p]));
+      setStops((list) =>
+        list.map((s) => {
+          const p = found.get(s.id);
+          if (s.place || !p) return s;
+          const { id, typed, ...place } = p; // eslint-disable-line no-unused-vars
+          return { ...s, place };
+        }),
+      );
       setResult(planned);
+      setDone([]);
       setPhase('result');
     } catch (err) {
       setError(err.message || 'Não foi possível calcular a rota. Tente de novo.');
@@ -113,9 +181,21 @@ export default function App() {
         </header>
 
         {phase === 'result' && result ? (
-          <RouteResult result={result} onEdit={() => setPhase('edit')} />
+          <RouteResult
+            result={result}
+            done={done}
+            onToggleDone={toggleDone}
+            onEdit={() => setPhase('edit')}
+            onNewRoute={newRoute}
+          />
         ) : (
           <section className="planner" aria-labelledby="planner-title">
+            {result && (
+              <button type="button" className="back-button" onClick={() => setPhase('result')}>
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4 6.5 10l6 6" /></svg>
+                Voltar para a rota calculada
+              </button>
+            )}
             <h1 id="planner-title" className="planner-title">Para onde você vai hoje?</h1>
             <p className="planner-lead">
               Adicione os endereços em qualquer ordem. O app encontra a sequência com menos quilômetros,
@@ -181,13 +261,53 @@ export default function App() {
 
               <li className="road-node node-add">
                 <span className="marker marker-add" aria-hidden="true">+</span>
-                <button type="button" className="add-button" onClick={addStop}>
-                  Adicionar endereço
-                </button>
+                <div className="add-row">
+                  <button type="button" className="add-button" onClick={addStop}>
+                    Adicionar endereço
+                  </button>
+                  <button
+                    type="button"
+                    className="text-button"
+                    aria-expanded={pasteOpen}
+                    onClick={() => setPasteOpen((open) => !open)}
+                  >
+                    Colar lista
+                  </button>
+                </div>
               </li>
             </ol>
 
+            {pasteOpen && (
+              <div className="paste-box">
+                <label htmlFor="paste-list" className="paste-label">
+                  Cole os endereços, um por linha (pode ser do WhatsApp ou de uma planilha)
+                </label>
+                <textarea
+                  id="paste-list"
+                  rows={6}
+                  autoFocus
+                  value={pasteText}
+                  placeholder={'Rua Azevedo Sodré, 120, Santos\nAv. Ana Costa, 300, Santos\n…'}
+                  onChange={(event) => setPasteText(event.target.value)}
+                />
+                <div className="paste-actions">
+                  <button type="button" className="button button-primary" onClick={addPasted}>
+                    Adicionar {parseAddressList(pasteText).length || ''} endereços
+                  </button>
+                  <button type="button" className="button button-quiet" onClick={() => setPasteOpen(false)}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <label className="option">
+              <input type="checkbox" checked={roundTrip} onChange={(event) => setRoundTrip(event.target.checked)} />
+              <span>Voltar ao ponto de partida no fim</span>
+            </label>
+
             {error && <p className="error" role="alert">{error}</p>}
+            {!error && hint && <p className="hint" role="status">{hint}</p>}
 
             <div className="action-bar">
               <button
@@ -197,7 +317,9 @@ export default function App() {
                 disabled={working}
                 aria-busy={working}
               >
-                {working ? `${progress}…` : 'Otimizar rota'}
+                {working
+                  ? `${progress}…`
+                  : `Otimizar rota${filled.length > 1 ? ` (${filled.length} endereços)` : ''}`}
               </button>
             </div>
           </section>
@@ -205,7 +327,12 @@ export default function App() {
       </aside>
 
       <main className="map-area">
-        <MapView start={startPoint} draftStops={draftStops} result={phase === 'result' ? result : null} />
+        <MapView
+          start={startPoint}
+          draftStops={draftStops}
+          result={phase === 'result' ? result : null}
+          done={done}
+        />
       </main>
     </div>
   );

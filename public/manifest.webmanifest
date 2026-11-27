@@ -1,0 +1,16 @@
+{
+  "name": "Rota Certa",
+  "short_name": "Rota Certa",
+  "description": "Adicione endereços em qualquer ordem e receba a rota com menos quilômetros.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#e8ece9",
+  "theme_color": "#0e6b4a",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
