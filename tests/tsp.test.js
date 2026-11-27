@@ -143,3 +143,14 @@ test('Google Maps sem origem usa a localização atual', () => {
   const links = googleMapsLinks(null, [{ lat: -23.9, lon: -46.3 }]);
   assert.equal(new URL(links[0].url).searchParams.get('origin'), null);
 });
+
+test('voz: limpa o texto falado e reconhece o comando de parar', async () => {
+  const { cleanSpoken, isStopCommand } = await import('../src/lib/parseList.js');
+  assert.equal(cleanSpoken('rua azevedo sodré número 120 vírgula santos'), 'Rua Azevedo Sodré 120, Santos');
+  assert.equal(cleanSpoken('Avenida Ana Costa, 300 Santos.'), 'Avenida Ana Costa, 300 Santos');
+  assert.equal(cleanSpoken('praça mauá nº 1 virgula centro vírgula santos'), 'Praça Mauá 1, Centro, Santos');
+  assert.equal(cleanSpoken('rua barão de paranapiacaba 45'), 'Rua Barão de Paranapiacaba 45');
+  assert.ok(isStopCommand('Pronto.'));
+  assert.ok(isStopCommand('terminei'));
+  assert.ok(!isStopCommand('Rua Pronto, 12'));
+});
