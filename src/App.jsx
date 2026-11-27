@@ -5,7 +5,8 @@ import RouteResult from './components/RouteResult.jsx';
 import { useGeolocation } from './lib/useGeolocation.js';
 import { geocode } from './lib/geocode.js';
 import { planRoute } from './lib/optimize.js';
-import { parseAddressList } from './lib/parseList.js';
+import { parseAddressList, cleanSpoken, isStopCommand, normalize } from './lib/parseList.js';
+import { useSpeech } from './lib/useSpeech.js';
 import { loadState, saveState, clearState } from './lib/storage.js';
 
 const MAX_STOPS = 60;
@@ -16,6 +17,15 @@ const idPrefix = Date.now().toString(36);
 const newStop = (text = '') => ({ id: `parada-${idPrefix}-${nextId++}`, text, place: null });
 
 const saved = loadState();
+
+function MicIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="mic-icon">
+      <rect x="7" y="2.5" width="6" height="10" rx="3" />
+      <path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" />
+    </svg>
+  );
+}
 
 function RemoveIcon() {
   return (
@@ -38,6 +48,7 @@ export default function App() {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [hint, setHint] = useState('');
+  const [lastHeard, setLastHeard] = useState('');
   const inputRefs = useRef(new Map());
   const focusNext = useRef(null);
 
@@ -47,6 +58,63 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const draftStops = useMemo(() => stops.filter((s) => s.place).map((s) => s.place), [locatedKey]);
   const filled = stops.filter((s) => s.text.trim());
+
+  // A voz chega fora do ciclo do React: os refs dão a lista e a partida atuais
+  const stopsRef = useRef(stops);
+  stopsRef.current = stops;
+  const startRef = useRef(startPoint);
+  startRef.current = startPoint;
+  const speech = useSpeech({ onPhrase: handlePhrase });
+
+  // Cada frase falada vira uma parada e já é localizada no mapa
+  function handlePhrase(raw) {
+    if (isStopCommand(raw)) {
+      speech.stop();
+      return;
+    }
+    const text = cleanSpoken(raw);
+    if (text.length < 3) return;
+    const current = stopsRef.current;
+    if (current.some((s) => s.text.trim() && normalize(s.text) === normalize(text))) {
+      setLastHeard(`${text} (já estava na lista)`);
+      return;
+    }
+    if (current.filter((s) => s.text.trim()).length >= MAX_STOPS) {
+      setError(`O limite é de ${MAX_STOPS} paradas por rota.`);
+      speech.stop();
+      return;
+    }
+    const stop = newStop(text);
+    setStops((list) => {
+      const empty = list.findIndex((s) => !s.text.trim());
+      if (empty < 0) return [...list, stop];
+      const copy = [...list];
+      copy[empty] = stop;
+      return copy;
+    });
+    setLastHeard(text);
+    setError('');
+    geocode(text, { near: startRef.current })
+      .then((place) => {
+        if (!place) return;
+        setStops((list) =>
+          list.map((s) => (s.id === stop.id && s.text === text && !s.place ? { ...s, place } : s)),
+        );
+      })
+      .catch(() => {
+        // sem problema: o endereço é procurado de novo ao otimizar
+      });
+  }
+
+  function toggleVoice() {
+    if (speech.listening) {
+      speech.stop();
+    } else {
+      setLastHeard('');
+      setPasteOpen(false);
+      speech.start();
+    }
+  }
 
   // Salva tudo no aparelho a cada mudança (a fase 'working' é salva como 'edit')
   useEffect(() => {
@@ -145,6 +213,7 @@ export default function App() {
       return;
     }
     setError('');
+    speech.stop();
     setPhase('working');
     try {
       setProgress('Localizando a partida');
@@ -265,6 +334,17 @@ export default function App() {
                   <button type="button" className="add-button" onClick={addStop}>
                     Adicionar endereço
                   </button>
+                  {speech.supported && (
+                    <button
+                      type="button"
+                      className={`text-button voice-button ${speech.listening ? 'is-listening' : ''}`}
+                      aria-pressed={speech.listening}
+                      onClick={toggleVoice}
+                    >
+                      <MicIcon />
+                      {speech.listening ? 'Parar de ouvir' : 'Falar'}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="text-button"
@@ -276,6 +356,8 @@ export default function App() {
                 </div>
               </li>
             </ol>
+
+            {speech.error && <p className="error" role="alert">{speech.error}</p>}
 
             {pasteOpen && (
               <div className="paste-box">
@@ -310,17 +392,33 @@ export default function App() {
             {!error && hint && <p className="hint" role="status">{hint}</p>}
 
             <div className="action-bar">
-              <button
-                type="button"
-                className="button button-primary button-large"
-                onClick={optimize}
-                disabled={working}
-                aria-busy={working}
-              >
-                {working
-                  ? `${progress}…`
-                  : `Otimizar rota${filled.length > 1 ? ` (${filled.length} endereços)` : ''}`}
-              </button>
+              {speech.listening ? (
+                <div className="voice-box" role="status" aria-live="polite">
+                  <span className="voice-pulse" aria-hidden="true"><MicIcon /></span>
+                  <div className="voice-text">
+                    <strong>{speech.interim ? `“${speech.interim}”` : 'Ouvindo…'}</strong>
+                    <span>
+                      Fale um endereço por vez, com rua, número e cidade. Diga “pronto” para terminar.
+                    </span>
+                    {lastHeard && <span className="voice-last">Adicionado: {lastHeard}</span>}
+                  </div>
+                  <button type="button" className="button button-outline voice-stop" onClick={speech.stop}>
+                    Parar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="button button-primary button-large"
+                  onClick={optimize}
+                  disabled={working}
+                  aria-busy={working}
+                >
+                  {working
+                    ? `${progress}…`
+                    : `Otimizar rota${filled.length > 1 ? ` (${filled.length} endereços)` : ''}`}
+                </button>
+              )}
             </div>
           </section>
         )}
